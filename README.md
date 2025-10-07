@@ -71,3 +71,8 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+
+- customization of name 
+- not able to connect the ssh issues faced
+- another terminal in which is connected to my interface laptop interface
