@@ -1,0 +1,16 @@
+{
+  "name": "ssh-dashboard-backend",
+  "version": "1.0.0",
+  "description": "Local backend server for SSH terminal and file transfers",
+  "main": "backend-server.js",
+  "scripts": {
+    "start": "node backend-server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "ssh2": "^1.14.0",
+    "multer": "^1.4.5-lts.1",
+    "cors": "^2.8.5"
+  }
+}
