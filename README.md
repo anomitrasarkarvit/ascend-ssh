@@ -72,7 +72,4 @@ To connect a domain, navigate to Project > Settings > Domains and click Connect 
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
 
-
-- customization of name 
-- not able to connect the ssh issues faced
-- another terminal in which is connected to my interface laptop interface
+its not capturing my typing or i/o, rest the terminal seems to connect. but when i type dir or my command it doesn't respond, (i can't even see it even get typed)
