@@ -9,13 +9,20 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const os = require('os');
-const pty = require('node-pty');
+let pty;
+try { pty = require('node-pty'); }
+catch (e1) {
+  try { pty = require('@homebridge/node-pty-prebuilt-multiarch'); }
+  catch (e2) {
+    console.warn('node-pty not available; local terminal disabled:', e1.message);
+  }
+}
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: 'http://localhost:8080',
+    origin: '*',
     methods: ['GET', 'POST'],
   },
 });
@@ -48,7 +55,7 @@ io.on('connection', (socket) => {
 
           ssh.connect({
             host,
-            port,
+            port: Number(port),
             username,
             password,
             readyTimeout: 45000,
@@ -120,6 +127,11 @@ io.on('connection', (socket) => {
 
   // Local laptop terminal (pty)
   socket.on('local-connect', () => {
+    if (!pty) {
+      socket.emit('local-error', 'Local terminal unavailable on server (node-pty not installed)');
+      return;
+    }
+
     const shell = process.platform === 'win32'
       ? (process.env.COMSPEC || 'cmd.exe')
       : (process.env.SHELL || '/bin/bash');

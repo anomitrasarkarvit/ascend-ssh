@@ -49,6 +49,14 @@ export const LocalTerminal = () => {
       xterm.write(data);
     });
 
+    socket.on('local-error', (msg: string) => {
+      xterm.writeln(`\r\n\x1b[31m${msg}\x1b[0m`);
+    });
+
+    socket.on('local-exit', () => {
+      xterm.writeln('\r\n\x1b[33mLocal shell exited\x1b[0m');
+    });
+
     socket.on('disconnect', () => {
       setIsConnected(false);
       xterm.writeln('\r\n\x1b[33mLocal terminal disconnected\x1b[0m');
