@@ -9,14 +9,7 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const os = require('os');
-let pty;
-try { pty = require('node-pty'); }
-catch (e1) {
-  try { pty = require('@homebridge/node-pty-prebuilt-multiarch'); }
-  catch (e2) {
-    console.warn('node-pty not available; local terminal disabled:', e1.message);
-  }
-}
+const { spawn } = require('child_process');
 
 const app = express();
 const server = http.createServer(app);
@@ -41,7 +34,7 @@ io.on('connection', (socket) => {
     console.log(`SSH connect request: ${username}@${host}:${port}`);
 
     const ssh = new Client();
-    const session = { ssh, serverId, mode: 'await-password', passwordBuffer: '', stream: null, pty: null };
+    const session = { ssh, serverId, mode: 'await-password', passwordBuffer: '', stream: null, shell: null };
     activeSessions.set(socket.id, session);
 
     const handleSshInput = (data) => {
@@ -125,35 +118,35 @@ io.on('connection', (socket) => {
     socket.emit('ssh-data', `\\r\\nPassword authentication required.\\r\\n${username}@${host}'s password: `);
   });
 
-  // Local laptop terminal (pty)
+  // Local laptop terminal (using child_process - no native deps)
   socket.on('local-connect', () => {
-    if (!pty) {
-      socket.emit('local-error', 'Local terminal unavailable on server (node-pty not installed)');
-      return;
-    }
-
     const shell = process.platform === 'win32'
       ? (process.env.COMSPEC || 'cmd.exe')
       : (process.env.SHELL || '/bin/bash');
 
-    const ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-color',
-      cols: 80,
-      rows: 24,
+    const shellProcess = spawn(shell, [], {
       cwd: process.cwd(),
       env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     const existing = activeSessions.get(socket.id) || {};
-    existing.pty = ptyProcess;
+    existing.shell = shellProcess;
     activeSessions.set(socket.id, existing);
 
-    ptyProcess.onData((data) => socket.emit('local-data', data));
-    ptyProcess.onExit(() => socket.emit('local-exit'));
+    shellProcess.stdout.on('data', (data) => socket.emit('local-data', data.toString()));
+    shellProcess.stderr.on('data', (data) => socket.emit('local-data', data.toString()));
+    
+    shellProcess.on('exit', (code) => {
+      socket.emit('local-exit', code);
+    });
 
-    socket.on('local-input', (data) => ptyProcess.write(data));
-    socket.on('local-resize', ({ cols, rows }) => {
-      try { ptyProcess.resize(cols, rows); } catch {}
+    socket.on('local-input', (data) => {
+      try {
+        shellProcess.stdin.write(data);
+      } catch (e) {
+        console.error('Error writing to shell:', e);
+      }
     });
   });
 
@@ -162,7 +155,7 @@ io.on('connection', (socket) => {
     const session = activeSessions.get(socket.id);
     if (session) {
       try { session.ssh && session.ssh.end(); } catch {}
-      try { session.pty && session.pty.kill(); } catch {}
+      try { session.shell && session.shell.kill(); } catch {}
       activeSessions.delete(socket.id);
     }
   });

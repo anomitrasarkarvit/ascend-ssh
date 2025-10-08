@@ -6,7 +6,7 @@ This dashboard requires a local Node.js backend to handle SSH connections and fi
 
 1. **Install backend dependencies:**
    ```bash
-   npm install --prefix . --package-lock-only=false express socket.io ssh2 multer cors
+   npm install express socket.io ssh2 multer cors
    ```
 
 2. **Start the backend server:**
