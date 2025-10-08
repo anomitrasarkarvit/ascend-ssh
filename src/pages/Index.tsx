@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { ServerCard } from '@/components/ServerCard';
 import { Terminal } from '@/components/Terminal';
+import { LocalTerminal } from '@/components/LocalTerminal';
 import { FileUpload } from '@/components/FileUpload';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Server {
@@ -33,6 +34,13 @@ const servers: Server[] = [
 const Index = () => {
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
   const [dialogType, setDialogType] = useState<'terminal' | 'upload' | null>(null);
+  const [nameOverrides, setNameOverrides] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('serverNameOverrides') || '{}');
+    } catch {
+      return {};
+    }
+  });
 
   const handleOpenTerminal = (server: Server) => {
     setSelectedServer(server);
@@ -49,6 +57,16 @@ const Index = () => {
     setDialogType(null);
   };
 
+  const handleRename = (server: Server) => {
+    const current = nameOverrides[server.id] || server.name;
+    const next = window.prompt('Rename server', current)?.trim();
+    if (next && next !== current) {
+      const updated = { ...nameOverrides, [server.id]: next };
+      setNameOverrides(updated);
+      localStorage.setItem('serverNameOverrides', JSON.stringify(updated));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-7xl mx-auto">
@@ -62,14 +80,19 @@ const Index = () => {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {servers.map((server) => (
-            <ServerCard
-              key={server.id}
-              {...server}
-              onOpenTerminal={() => handleOpenTerminal(server)}
-              onOpenFileUpload={() => handleOpenFileUpload(server)}
-            />
-          ))}
+          {servers.map((server) => {
+            const displayName = nameOverrides[server.id] || server.name;
+            return (
+              <ServerCard
+                key={server.id}
+                {...server}
+                name={displayName}
+                onOpenTerminal={() => handleOpenTerminal(server)}
+                onOpenFileUpload={() => handleOpenFileUpload(server)}
+                onRename={() => handleRename(server)}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -79,6 +102,7 @@ const Index = () => {
             <DialogTitle className="font-mono">
               {selectedServer?.name} - {selectedServer?.host}
             </DialogTitle>
+            <DialogDescription>Use Terminal to browse and Upload to transfer files.</DialogDescription>
           </DialogHeader>
 
           <Tabs defaultValue={dialogType || 'terminal'} className="h-full flex flex-col">
@@ -111,6 +135,13 @@ const Index = () => {
           </Tabs>
         </DialogContent>
       </Dialog>
+
+      {/* Bottom local terminal */}
+      <section className="fixed bottom-0 left-0 right-0 h-[32vh] bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t border-border">
+        <div className="max-w-7xl mx-auto h-full px-4">
+          <LocalTerminal />
+        </div>
+      </section>
     </div>
   );
 };

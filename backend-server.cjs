@@ -8,6 +8,8 @@ const { Client } = require('ssh2');
 const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
+const os = require('os');
+const pty = require('node-pty');
 
 const app = express();
 const server = http.createServer(app);
@@ -32,17 +34,58 @@ io.on('connection', (socket) => {
     console.log(`SSH connect request: ${username}@${host}:${port}`);
 
     const ssh = new Client();
-    activeSessions.set(socket.id, { ssh, serverId });
+    const session = { ssh, serverId, mode: 'await-password', passwordBuffer: '', stream: null, pty: null };
+    activeSessions.set(socket.id, session);
+
+    const handleSshInput = (data) => {
+      // Collect password until Enter during auth phase
+      if (session.mode === 'await-password') {
+        if (data === '\\r' || data === '\\n') {
+          const password = session.passwordBuffer;
+          session.passwordBuffer = '';
+          session.mode = 'authenticating';
+          socket.emit('ssh-data', '\\r\\nConnecting...\\r\\n');
+
+          ssh.connect({
+            host,
+            port,
+            username,
+            password,
+            readyTimeout: 45000,
+          });
+          return;
+        }
+        // handle backspace
+        if (data === '\\x7f') {
+          session.passwordBuffer = session.passwordBuffer.slice(0, -1);
+          return;
+        }
+        // append regular char
+        if (typeof data === 'string') {
+          session.passwordBuffer += data;
+        }
+        return;
+      }
+
+      if (session.mode === 'shell' && session.stream) {
+        session.stream.write(data);
+      }
+    };
+
+    socket.on('ssh-input', handleSshInput);
 
     ssh.on('ready', () => {
       console.log('SSH connection established');
-      socket.emit('ssh-data', '\r\n\x1b[32mConnected to server\x1b[0m\r\n');
+      socket.emit('ssh-data', '\\r\\n\\x1b[32mConnected to server\\x1b[0m\\r\\n');
+      session.mode = 'shell';
 
       ssh.shell({ term: 'xterm-256color' }, (err, stream) => {
         if (err) {
           socket.emit('ssh-error', err.message);
           return;
         }
+
+        session.stream = stream;
 
         stream.on('data', (data) => {
           socket.emit('ssh-data', data.toString('utf-8'));
@@ -53,12 +96,10 @@ io.on('connection', (socket) => {
           socket.disconnect();
         });
 
-        socket.on('ssh-input', (data) => {
-          stream.write(data);
-        });
-
         socket.on('ssh-resize', ({ cols, rows }) => {
-          stream.setWindow(rows, cols);
+          try {
+            stream.setWindow(rows, cols);
+          } catch {}
         });
       });
     });
@@ -73,27 +114,34 @@ io.on('connection', (socket) => {
       activeSessions.delete(socket.id);
     });
 
-    // Prompt for password via terminal
-    ssh.connect({
-      host,
-      port,
-      username,
-      tryKeyboard: true,
-      authHandler: (methodsLeft, partialSuccess, callback) => {
-        if (methodsLeft === null || methodsLeft.includes('password')) {
-          socket.emit('ssh-data', '\r\nPassword authentication required.\r\n');
-          socket.emit('ssh-data', `${username}@${host}'s password: `);
-          
-          // Wait for password input
-          socket.once('ssh-input', (password) => {
-            callback({
-              type: 'password',
-              username,
-              password: password.replace(/\r?\n/, ''),
-            });
-          });
-        }
-      },
+    // Prompt for password first, then connect
+    socket.emit('ssh-data', `\\r\\nPassword authentication required.\\r\\n${username}@${host}'s password: `);
+  });
+
+  // Local laptop terminal (pty)
+  socket.on('local-connect', () => {
+    const shell = process.platform === 'win32'
+      ? (process.env.COMSPEC || 'cmd.exe')
+      : (process.env.SHELL || '/bin/bash');
+
+    const ptyProcess = pty.spawn(shell, [], {
+      name: 'xterm-color',
+      cols: 80,
+      rows: 24,
+      cwd: process.cwd(),
+      env: process.env,
+    });
+
+    const existing = activeSessions.get(socket.id) || {};
+    existing.pty = ptyProcess;
+    activeSessions.set(socket.id, existing);
+
+    ptyProcess.onData((data) => socket.emit('local-data', data));
+    ptyProcess.onExit(() => socket.emit('local-exit'));
+
+    socket.on('local-input', (data) => ptyProcess.write(data));
+    socket.on('local-resize', ({ cols, rows }) => {
+      try { ptyProcess.resize(cols, rows); } catch {}
     });
   });
 
@@ -101,7 +149,8 @@ io.on('connection', (socket) => {
     console.log('Client disconnected:', socket.id);
     const session = activeSessions.get(socket.id);
     if (session) {
-      session.ssh.end();
+      try { session.ssh && session.ssh.end(); } catch {}
+      try { session.pty && session.pty.kill(); } catch {}
       activeSessions.delete(socket.id);
     }
   });

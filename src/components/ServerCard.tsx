@@ -1,4 +1,4 @@
-import { Server, Terminal as TerminalIcon, Upload } from 'lucide-react';
+import { Server, Terminal as TerminalIcon, Upload, Pencil } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ interface ServerCardProps {
   username: string;
   onOpenTerminal: () => void;
   onOpenFileUpload: () => void;
+  onRename: () => void;
 }
 
 export const ServerCard = ({
@@ -20,6 +21,7 @@ export const ServerCard = ({
   username,
   onOpenTerminal,
   onOpenFileUpload,
+  onRename,
 }: ServerCardProps) => {
   return (
     <Card className="hover:border-primary/50 transition-all">
@@ -29,9 +31,14 @@ export const ServerCard = ({
             <Server className="h-5 w-5 text-primary" />
             <CardTitle className="text-xl">{name}</CardTitle>
           </div>
-          <Badge variant="outline" className="font-mono text-xs">
-            {host}:{port}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="font-mono text-xs">
+              {host}:{port}
+            </Badge>
+            <Button variant="ghost" size="icon" aria-label="Rename server" onClick={onRename}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         <CardDescription className="font-mono">
           ssh -p {port} {username}@{host}
